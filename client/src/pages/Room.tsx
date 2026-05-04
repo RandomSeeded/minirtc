@@ -41,6 +41,11 @@ export default function Room() {
         setStatus("waiting");
       }
 
+      if (msg.type === "leave") {
+        hangup();
+        setStatus("ready");
+      }
+
       if (msg.type === "offer") {
         if (pcRef.current) {
           await handleOffer(msg.sdp);
@@ -126,6 +131,7 @@ export default function Room() {
   }
 
   function leaveCall() {
+    wsRef.current?.send(JSON.stringify({ type: "leave" }));
     hangup();
     setStatus("ready");
   }
@@ -148,23 +154,51 @@ export default function Room() {
   };
 
   const inCall = status === "in-call" || status === "waiting-for-offer" || status === "joining";
+  const isActive = status === "in-call";
 
   return (
-    <div>
-      <h1>MiniRTC</h1>
-      <p>Room: <code>{roomId}</code></p>
-      <p>{statusText[status]}</p>
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-between py-10 px-4">
 
-      {status === "ready" || status === "failed" ? (
-        <button onClick={joinCall}>Join Call</button>
-      ) : null}
+      {/* Header */}
+      <div className="text-center">
+        <p className="text-xs text-gray-600 uppercase tracking-widest mb-1">Room</p>
+        <code className="text-xs text-gray-500 bg-gray-900 px-3 py-1 rounded-full">{roomId}</code>
+      </div>
 
-      {inCall ? (
-        <>
-          <button onClick={toggleMute}>{muted ? "Unmute" : "Mute"}</button>
-          <button onClick={leaveCall}>Leave</button>
-        </>
-      ) : null}
+      {/* Status */}
+      <div className="flex flex-col items-center gap-3">
+        <div className={`rounded-full transition-all duration-500 ${isActive ? "w-16 h-16 bg-green-400" : "w-3 h-3 bg-gray-600"}`} />
+        <p className="text-2xl font-medium">{statusText[status]}</p>
+      </div>
+
+      {/* Controls */}
+      <div className="flex gap-3 items-center h-14">
+        {status === "ready" || status === "failed" ? (
+          <button
+            onClick={joinCall}
+            className="bg-green-500 hover:bg-green-400 text-white font-medium px-8 py-3 rounded-full transition-colors cursor-pointer"
+          >
+            Join Call
+          </button>
+        ) : null}
+
+        {inCall ? (
+          <>
+            <button
+              onClick={toggleMute}
+              className="bg-gray-800 hover:bg-gray-700 text-white font-medium px-6 py-3 rounded-full transition-colors cursor-pointer"
+            >
+              {muted ? "Unmute" : "Mute"}
+            </button>
+            <button
+              onClick={leaveCall}
+              className="bg-red-600 hover:bg-red-500 text-white font-medium px-6 py-3 rounded-full transition-colors cursor-pointer"
+            >
+              Leave
+            </button>
+          </>
+        ) : null}
+      </div>
 
       <audio ref={remoteAudioRef} autoPlay />
     </div>
