@@ -1,30 +1,37 @@
 # MiniRTC — Design Decisions
 
-## WebRTC for media
+## Technology choices 
 
-The core requirement is real-time audio between two browsers. The alternatives — relaying audio through the server (SFU/MCU style) or using a managed service like Twilio — both route media bytes through infrastructure we operate. WebRTC sends media peer-to-peer, directly between browsers, which has two concrete benefits:
+- WebSockets: bidirectional communication layer between backend service and frontend. Other options being http long-polling or SSE, but websockets chosen for simplicity / to unify the communication layer
+- WebRTC: p2p handling of audio/video traffic. Chosen to minimize our bandwidth (costs) and e2e user-facing latency (no hop required to our servers)
+- Redis pub/sub: enables horizontal scaling of the backend application server. Handles the issue of users not being guaranteed to be colocated on the same backend server instance: we emit an event for a given roomId, and the appropriate backend server instances are subscribed to events for that roomId.
 
-- **Latency**: no extra server hop in the media path
-- **Cost**: the server never touches audio data, so bandwidth and compute costs don't scale with call volume
+## What breaks if we had 10k rooms/day?
 
-The tradeoff is that WebRTC is complex — the browser handles encoding, packetization, jitter buffering, and network traversal, but the application still has to orchestrate the connection setup (see: signaling). For a product where the primary concern is call quality and cost, that complexity is worth it.
+A single instance of a backend server which was handling all traffic might struggle under 10k rooms/day, but we've taken steps to mitigate that:
 
-## WebSockets for signaling
+1. Our backend server is not serving any audio/video traffic directly, only the bare minimum metadata traffic necessary for clients to establish a p2p connection. This is a burst of traffic on call start, not sustained traffic for the duration of the call.
+2. We've chosen to make our backend service horizontally scalable, at the cost of some complexity. We no longer expect both clients to connect to the same server instance (colocation), and we use a small redis pub/sub layer such that we can route outbound websocket messages to the correct node. The docker-compose is running 3 backend server nodes with a round-robin load balancer to demonstrate this horizontal scalability.
+3. Rooms are short-lived - they will automatically be pruned from both redis and the backend server after the clients disconnect
 
-Before two WebRTC peers can connect directly, they need to exchange metadata: SDP offers and answers describing their media capabilities, and ICE candidates describing their network reachability. This exchange requires a server intermediary — neither peer knows how to reach the other yet.
+With the current implementation I would expect us to be able to handle 10k (direct p2p) calls a day on even very budget hardware, though I can't say I load tested my deployed version! 
 
-The server's job is to relay these messages as quickly as possible. ICE candidates in particular trickle in continuously and need to be forwarded to the other peer immediately as they arrive. This means we need the server to **push** to clients, not wait to be polled.
+One minor exception: we are currently using Google's STUN server - at 20k requests/day we might get rate limited and need to run our own (cheap).
 
-HTTP polling would work but adds unnecessary latency on every candidate. SSE can push from server to client, but clients would still need to POST in the other direction — two separate channels for what is fundamentally one bidirectional stream. WebSockets are the natural fit: a single persistent connection, full-duplex, low overhead, and the standard choice for signaling servers.
+## How would we keep costs sane?
 
-## Redis pub/sub for cross-instance signaling
+Cost considerations:
+- our backend server *never touches audio bytes*, so costs generally don't scale with call volume (other than eventually needing additional backend services)
+- redis comfortably handles ~100k ops/sec on a single node. At 10k rooms/day with ~10-20 signaling messages per call, we're well within that ceiling for a long time.
+- the main long-term cost consideration will be TURN servers, which will be handling orders of magnitude more traffic than our current implementation
+- minimize TURN server usage by only using them when required as a direct p2p connection cannot be established
 
-Running a single server instance means all WebSocket connections land on the same process — routing a message from peer A to peer B is a local map lookup. That breaks when you scale horizontally: if A is connected to instance 1 and B is connected to instance 2, a message from A arrives at instance 1 with no direct path to B.
+## What can we do about NAT traversal (TURN) in 'real life'?
 
-The solution is a message bus that all instances share. When A sends a signaling message, instance 1 publishes it to a per-room channel. Every instance that has a peer in that room is subscribed to that channel and receives the message, then forwards it to the appropriate local WebSocket connection.
+NAT traversal: unfortunately our clients may not always be able to establish a direct p2p connection with one another. In that situation we will need to forward the actual audio/video traffic between them with TURN servers. Probably worth looking into whether we can simply buy these as a service (Twilio?) rather than build these out ourselves - this is very latency-sensitive, so geographic distribution ends up being very important here.
 
-Redis pub/sub is the right primitive here for a few reasons:
+Mentioned in previous section, but again: we will want to minimize TURN server usage to only those cases where a direct p2p connection cannot be established.
 
-- **Ephemeral by nature**: signaling state only matters for the duration of a call. Redis is an in-memory store — there's no durability overhead for data that has no reason to outlive the process.
-- **Low latency**: pub/sub delivery in Redis is sub-millisecond in practice, which matters for ICE candidate forwarding.
-- **Operationally simple**: pub/sub is a first-class Redis primitive with no schema, no consumer groups, no offset management. A channel per room, subscribe on first peer arrival, unsubscribe when the last local peer leaves.
+## Deployed:
+
+[https://minirtc.natewillard.com](https://minirtc.natewillard.com)
