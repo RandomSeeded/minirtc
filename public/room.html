@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MiniRTC — Room</title>
+</head>
+<body>
+  <h1>MiniRTC</h1>
+  <p>Room: <code id="room-id"></code></p>
+  <p>Status: <strong id="status">connecting...</strong></p>
+  <hr />
+  <h3>Message log</h3>
+  <pre id="log" style="background:#f4f4f4;padding:1em;height:300px;overflow-y:auto;"></pre>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get("id");
+
+    if (!roomId) {
+      document.getElementById("status").textContent = "No room ID in URL";
+      throw new Error("missing room id");
+    }
+
+    document.getElementById("room-id").textContent = roomId;
+
+    const status = document.getElementById("status");
+    const log = document.getElementById("log");
+
+    function appendLog(msg) {
+      log.textContent += new Date().toISOString() + "  " + msg + "\n";
+      log.scrollTop = log.scrollHeight;
+    }
+
+    const ws = new WebSocket(`ws://${location.host}/rooms/${roomId}/ws`);
+
+    ws.addEventListener("open", () => {
+      status.textContent = "connected — waiting for peer";
+      appendLog("[ws] connected");
+    });
+
+    ws.addEventListener("message", (event) => {
+      appendLog("[ws] " + event.data);
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "peer-joined") status.textContent = "peer joined";
+        if (msg.type === "peer-left")   status.textContent = "peer left";
+      } catch {}
+    });
+
+    ws.addEventListener("close", () => {
+      status.textContent = "disconnected";
+      appendLog("[ws] closed");
+    });
+
+    ws.addEventListener("error", () => {
+      appendLog("[ws] error");
+    });
+  </script>
+</body>
+</html>
