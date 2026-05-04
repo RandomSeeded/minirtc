@@ -19,7 +19,6 @@ Open [http://localhost:8080](http://localhost:8080), create a room, and share th
 - **Redis pub/sub** — routes signaling messages across multiple server instances so peers don't need to land on the same node
 - **Multi-instance deployment** — nginx load balancer in front of 3 Node.js instances, demonstrating horizontal scalability
 - **React frontend** — room creation, call state UI, mute toggle
-- **24-hour room TTL** — rooms expire automatically
 
 ## What's not built
 
