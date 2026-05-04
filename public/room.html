@@ -2,59 +2,175 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MiniRTC — Room</title>
+  <title>MiniRTC</title>
+  <style>
+    body { font-family: sans-serif; max-width: 480px; margin: 2rem auto; }
+    #waiting { color: #888; }
+    #controls { display: none; }
+    button { margin-right: 0.5rem; padding: 0.5rem 1rem; font-size: 1rem; }
+    #status { margin-top: 1rem; font-weight: bold; }
+  </style>
 </head>
 <body>
   <h1>MiniRTC</h1>
   <p>Room: <code id="room-id"></code></p>
-  <p>Status: <strong id="status">connecting...</strong></p>
-  <hr />
-  <h3>Message log</h3>
-  <pre id="log" style="background:#f4f4f4;padding:1em;height:300px;overflow-y:auto;"></pre>
+
+  <p id="waiting">⏳ Waiting for other user...</p>
+
+  <div id="controls">
+    <button id="btn-join">Join Call</button>
+    <button id="btn-mute" disabled>Mute</button>
+    <button id="btn-leave" disabled>Leave</button>
+    <p id="status"></p>
+  </div>
+
+  <audio id="remote-audio" autoplay></audio>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get("id");
-
-    if (!roomId) {
-      document.getElementById("status").textContent = "No room ID in URL";
-      throw new Error("missing room id");
-    }
-
+    if (!roomId) throw new Error("missing room id");
     document.getElementById("room-id").textContent = roomId;
-
-    const status = document.getElementById("status");
-    const log = document.getElementById("log");
-
-    function appendLog(msg) {
-      log.textContent += new Date().toISOString() + "  " + msg + "\n";
-      log.scrollTop = log.scrollHeight;
-    }
 
     const ws = new WebSocket(`ws://${location.host}/rooms/${roomId}/ws`);
 
-    ws.addEventListener("open", () => {
-      status.textContent = "connected — waiting for peer";
-      appendLog("[ws] connected");
+    const waiting  = document.getElementById("waiting");
+    const controls = document.getElementById("controls");
+    const btnJoin  = document.getElementById("btn-join");
+    const btnMute  = document.getElementById("btn-mute");
+    const btnLeave = document.getElementById("btn-leave");
+    const status   = document.getElementById("status");
+    const remoteAudio = document.getElementById("remote-audio");
+
+    const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+
+    let isInitiator = false;
+    let pc = null;
+    let localStream = null;
+    let pendingOffer = null;
+    let muted = false;
+
+    function setStatus(msg) {
+      status.textContent = msg;
+    }
+
+    // --- WebSocket message handling ---
+
+    ws.addEventListener("message", async (event) => {
+      console.log("[ws] raw message received:", event.data);
+      const msg = JSON.parse(event.data);
+
+      if (msg.type === "peer-joined") {
+        isInitiator = msg.initiator;
+        waiting.style.display = "none";
+        controls.style.display = "block";
+        setStatus("Peer connected — click Join Call");
+      }
+
+      if (msg.type === "peer-left") {
+        setStatus("Peer left the call");
+        hangup();
+        waiting.style.display = "block";
+        controls.style.display = "none";
+      }
+
+      if (msg.type === "offer") {
+        if (pc) {
+          await handleOffer(msg.sdp);
+        } else {
+          pendingOffer = msg.sdp;
+        }
+      }
+
+      if (msg.type === "answer") {
+        await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+        setStatus("In call");
+      }
+
+      if (msg.type === "ice-candidate") {
+        await pc?.addIceCandidate(msg.candidate);
+      }
     });
 
-    ws.addEventListener("message", (event) => {
-      appendLog("[ws] " + event.data);
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "peer-joined") status.textContent = "peer joined";
-        if (msg.type === "peer-left")   status.textContent = "peer left";
-      } catch {}
+    ws.addEventListener("close", () => setStatus("Disconnected from server"));
+
+    // --- Call controls ---
+
+    btnJoin.addEventListener("click", async () => {
+      btnJoin.disabled = true;
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      pc = createPeerConnection();
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+      if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
+        setStatus("Offer sent, waiting for answer...");
+      } else if (pendingOffer) {
+        await handleOffer(pendingOffer);
+        pendingOffer = null;
+      } else {
+        setStatus("Waiting for offer...");
+      }
+
+      btnMute.disabled = false;
+      btnLeave.disabled = false;
     });
 
-    ws.addEventListener("close", () => {
-      status.textContent = "disconnected";
-      appendLog("[ws] closed");
+    btnMute.addEventListener("click", () => {
+      muted = !muted;
+      localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+      btnMute.textContent = muted ? "Unmute" : "Mute";
     });
 
-    ws.addEventListener("error", () => {
-      appendLog("[ws] error");
+    btnLeave.addEventListener("click", () => {
+      hangup();
+      setStatus("You left the call");
     });
+
+    // --- WebRTC helpers ---
+
+    function createPeerConnection() {
+      const conn = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+      conn.onicecandidate = ({ candidate }) => {
+        if (candidate) {
+          ws.send(JSON.stringify({ type: "ice-candidate", candidate }));
+        }
+      };
+
+      conn.ontrack = (event) => {
+        remoteAudio.srcObject = event.streams[0];
+      };
+
+      conn.onconnectionstatechange = () => {
+        setStatus(conn.connectionState);
+      };
+
+      return conn;
+    }
+
+    async function handleOffer(sdp) {
+      await pc.setRemoteDescription({ type: "offer", sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+      setStatus("Answer sent...");
+    }
+
+    function hangup() {
+      pc?.close();
+      pc = null;
+      localStream?.getTracks().forEach(t => t.stop());
+      localStream = null;
+      pendingOffer = null;
+      btnJoin.disabled = false;
+      btnMute.disabled = true;
+      btnLeave.disabled = true;
+      btnMute.textContent = "Mute";
+      muted = false;
+    }
   </script>
 </body>
 </html>

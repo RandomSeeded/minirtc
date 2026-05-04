@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "nodemon --exec tsx src/index.ts --ext ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -20,6 +20,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
     "@types/ws": "^8.18.1",
+    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"

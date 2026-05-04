@@ -27,16 +27,19 @@ export function attachSignaling(server: Server): void {
 
 function onConnection(ws: WebSocket, room: Room): void {
   room.peers.add(ws);
+  console.log(`[signaling] peer connected to room ${room.id}, peers now: ${room.peers.size}`);
 
   const other = getOther(ws, room.peers);
   if (other) {
-    send(other, { type: "peer-joined" });
+    console.log(`[signaling] sending peer-joined to both peers (other.readyState=${other.readyState}, ws.readyState=${ws.readyState})`);
+    send(other, { type: "peer-joined", initiator: true });
+    send(ws,    { type: "peer-joined", initiator: false });
   }
 
-  ws.on("message", (data) => {
+  ws.on("message", (data, isBinary) => {
     const other = getOther(ws, room.peers);
     if (other?.readyState === WebSocket.OPEN) {
-      other.send(data);
+      other.send(data, { binary: isBinary });
     }
   });
 
