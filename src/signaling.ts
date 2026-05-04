@@ -9,7 +9,7 @@ const INSTANCE = process.env.INSTANCE_ID ?? "local";
 // Local WebSocket connections: roomId → Map<peerId, WebSocket>
 const localPeers = new Map<string, Map<string, WebSocket>>();
 
-type ChannelMessage = { type: string; from: string; [key: string]: unknown };
+type ChannelMessage = { type: string; from: string;[key: string]: unknown };
 
 redisSub.on("message", (channel: string, raw: string) => {
   const roomId = channel.slice("room:".length);
@@ -25,8 +25,8 @@ function dispatch(roomId: string, msg: ChannelMessage): void {
     if (ws.readyState !== WebSocket.OPEN) continue;
 
     if (msg.type === "peer-connected") {
-      const initiator = peerId !== msg.from;
-      ws.send(JSON.stringify({ type: "peer-joined", initiator }));
+      if (peerId === msg.from) continue;
+      ws.send(JSON.stringify({ type: "peer-joined", initiator: true }));
     } else if (msg.type === "peer-disconnected") {
       if (peerId !== msg.from) {
         ws.send(JSON.stringify({ type: "peer-left" }));
@@ -82,14 +82,17 @@ async function onConnection(ws: WebSocket, roomId: string): Promise<void> {
 
   console.log(`[${INSTANCE}] peer ${peerId} connected to room ${roomId}`);
 
-  // Announce to all peers in the room (including self, to get peer-joined with initiator: false)
-  await redis.publish(`room:${roomId}`, JSON.stringify({ type: "peer-connected", from: peerId }));
+  const totalPeers = await redis.scard(`room:${roomId}:peers`);
+  if (totalPeers >= 2) {
+    ws.send(JSON.stringify({ type: "peer-joined", initiator: false }));
+    await redis.publish(`room:${roomId}`, JSON.stringify({ type: "peer-connected", from: peerId }));
+  }
 
   ws.on("message", async (data) => {
     try {
       const msg = JSON.parse(data.toString()) as Record<string, unknown>;
       await redis.publish(`room:${roomId}`, JSON.stringify({ ...msg, from: peerId }));
-    } catch {}
+    } catch { }
   });
 
   ws.on("close", async () => {
