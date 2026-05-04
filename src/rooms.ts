@@ -1,20 +1,14 @@
 import crypto from "crypto";
-import type { WebSocket } from "ws";
+import { redis } from "./redis";
 
-export interface Room {
-  id: string;
-  createdAt: Date;
-  peers: Set<WebSocket>;
+const ROOM_TTL_SECONDS = 24 * 60 * 60;
+
+export async function createRoom(): Promise<string> {
+  const id = crypto.randomUUID();
+  await redis.set(`room:${id}`, "1", "EX", ROOM_TTL_SECONDS);
+  return id;
 }
 
-const rooms = new Map<string, Room>();
-
-export function createRoom(): Room {
-  const room: Room = { id: crypto.randomUUID(), createdAt: new Date(), peers: new Set() };
-  rooms.set(room.id, room);
-  return room;
-}
-
-export function getRoom(id: string): Room | undefined {
-  return rooms.get(id);
+export async function roomExists(id: string): Promise<boolean> {
+  return (await redis.exists(`room:${id}`)) === 1;
 }
