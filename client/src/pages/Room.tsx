@@ -21,7 +21,8 @@ export default function Room() {
     useWebRTC(wsRef, setStatus);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${location.host}/rooms/${roomId}/ws`);
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${location.host}/rooms/${roomId}/ws`);
     wsRef.current = ws;
 
     ws.addEventListener("message", async (event) => {
