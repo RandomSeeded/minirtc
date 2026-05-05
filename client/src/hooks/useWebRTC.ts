@@ -33,7 +33,7 @@ export function useWebRTC(
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") setStatus("in-call");
-      if (pc.connectionState === "failed") setStatus("failed");
+      if (pc.connectionState === "failed") { hangup(); setStatus("failed"); }
     };
 
     return pc;

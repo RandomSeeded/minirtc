@@ -9,7 +9,7 @@ services:
 
   test:
     build: .
-    command: npm test
+    command: npx vitest run
     environment:
       REDIS_URL: redis://redis:6379
     depends_on:
