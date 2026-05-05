@@ -31,29 +31,34 @@ export default function Room() {
     wsRef.current = ws;
 
     ws.addEventListener("message", async (event) => {
-      const msg = JSON.parse(event.data) as SignalingMessage;
-      switch (msg.type) {
-        case "peer-joined":
-          setInitiator(msg.initiator);
-          setStatus("ready");
-          break;
-        case "peer-left":
-          hangup();
-          setStatus("waiting");
-          break;
-        case "leave":
-          hangup();
-          setStatus("ready");
-          break;
-        case "offer":
-          await handleOffer(msg.sdp);
-          break;
-        case "answer":
-          await handleAnswer(msg.sdp);
-          break;
-        case "ice-candidate":
-          await handleIceCandidate(msg.candidate);
-          break;
+      try {
+        const msg = JSON.parse(event.data) as SignalingMessage;
+        switch (msg.type) {
+          case "peer-joined":
+            setInitiator(msg.initiator);
+            setStatus("ready");
+            break;
+          case "peer-left":
+            hangup();
+            setStatus("waiting");
+            break;
+          case "leave":
+            hangup();
+            setStatus("ready");
+            break;
+          case "offer":
+            await handleOffer(msg.sdp);
+            break;
+          case "answer":
+            await handleAnswer(msg.sdp);
+            break;
+          case "ice-candidate":
+            await handleIceCandidate(msg.candidate);
+            break;
+        }
+      } catch (err) {
+        console.error("message handler error", err);
+        setStatus("failed");
       }
     });
 

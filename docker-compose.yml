@@ -18,6 +18,8 @@ services:
 
   node-1:
     build: .
+    depends_on:
+      - redis
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -26,6 +28,8 @@ services:
 
   node-2:
     build: .
+    depends_on:
+      - redis
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -34,6 +38,8 @@ services:
 
   node-3:
     build: .
+    depends_on:
+      - redis
     environment:
       - NODE_ENV=production
       - PORT=3000

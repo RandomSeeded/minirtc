@@ -2,12 +2,15 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
 import type { Redis } from "ioredis";
 import crypto from "crypto";
-import { roomExists } from "./rooms";
+import { roomExists, ROOM_TTL_SECONDS } from "./rooms";
 
 const INSTANCE = process.env.INSTANCE_ID ?? "local";
 const PING_INTERVAL_MS = 30_000;
 
-type ChannelMessage = { type: string; from: string; [key: string]: unknown };
+type ChannelMessage =
+  | { type: "peer-connected"; from: string }
+  | { type: "peer-disconnected"; from: string }
+  | { type: string; from: string; [key: string]: unknown }; // passthrough for offer/answer/ice-candidate
 
 export function attachSignaling(server: Server, redis: Redis, redisSub: Redis): { close: () => void } {
   const localPeers = new Map<string, Map<string, WebSocket>>();
@@ -56,8 +59,6 @@ export function attachSignaling(server: Server, redis: Redis, redisSub: Redis): 
     });
   }, PING_INTERVAL_MS);
 
-  wss.on("close", () => clearInterval(heartbeat));
-
   function close(): void {
     clearInterval(heartbeat);
     wss.clients.forEach((ws) => ws.terminate());
@@ -73,14 +74,23 @@ export function attachSignaling(server: Server, redis: Redis, redisSub: Redis): 
 
     const roomId = match[1] ?? "";
     const exists = await roomExists(roomId);
-    const peerCount = await redis.scard(`room:${roomId}:peers`);
 
     if (!exists) {
       console.warn(`[${INSTANCE}] rejected — room not found: ${roomId}`);
       socket.destroy();
       return;
     }
-    if (peerCount >= 2) {
+
+    const peerId = crypto.randomUUID();
+    const added = await redis.eval(
+      `if redis.call('SCARD', KEYS[1]) >= 2 then return 0 end
+       redis.call('SADD', KEYS[1], ARGV[1])
+       redis.call('EXPIRE', KEYS[1], ARGV[2])
+       return 1`,
+      1, `room:${roomId}:peers`, peerId, ROOM_TTL_SECONDS
+    ) as number;
+
+    if (!added) {
       console.warn(`[${INSTANCE}] rejected — room full: ${roomId}`);
       socket.destroy();
       return;
@@ -89,16 +99,13 @@ export function attachSignaling(server: Server, redis: Redis, redisSub: Redis): 
     wss.handleUpgrade(req, socket, head, (ws) => {
       isAlive.set(ws, true);
       ws.on("pong", () => isAlive.set(ws, true));
-      onConnection(ws, roomId).catch(() => ws.close());
+      onConnection(ws, roomId, peerId).catch(() => ws.close());
     });
   });
 
-  async function onConnection(ws: WebSocket, roomId: string): Promise<void> {
-    const peerId = crypto.randomUUID();
-
+  async function onConnection(ws: WebSocket, roomId: string, peerId: string): Promise<void> {
     if (!localPeers.has(roomId)) localPeers.set(roomId, new Map());
     localPeers.get(roomId)!.set(peerId, ws);
-    await redis.sadd(`room:${roomId}:peers`, peerId);
 
     if (localPeers.get(roomId)!.size === 1) {
       await redisSub.subscribe(`room:${roomId}`);

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { redis } from "./redis";
 
-const ROOM_TTL_SECONDS = 24 * 60 * 60;
+export const ROOM_TTL_SECONDS = 24 * 60 * 60;
 
 export async function createRoom(): Promise<string> {
   const id = crypto.randomUUID();
