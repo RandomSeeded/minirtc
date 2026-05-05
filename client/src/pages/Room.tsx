@@ -4,9 +4,10 @@ import { useWebRTC } from "../hooks/useWebRTC";
 import type { CallStatus, SignalingMessage } from "../types";
 
 const STATUS_TEXT: Record<CallStatus, string> = {
-  waiting: "Waiting for other user...",
+  waiting: "Waiting for other user to join the call...",
   ready: "Peer connected — click Join Call",
   joining: "Getting microphone...",
+  "mic-error": "Microphone access is required to join the call",
   connecting: "Connecting...",
   "waiting-for-offer": "Waiting for offer...",
   "in-call": "In call",
@@ -78,7 +79,7 @@ export default function Room() {
       </div>
 
       <div className="flex gap-3 items-center h-14">
-        {status === "ready" || status === "failed" ? (
+        {status === "ready" || status === "failed" || status === "mic-error" ? (
           <button
             onClick={joinCall}
             className="bg-green-500 hover:bg-green-400 text-white font-medium px-8 py-3 rounded-full transition-colors cursor-pointer"

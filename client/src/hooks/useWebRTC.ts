@@ -74,7 +74,13 @@ export function useWebRTC(
 
   async function joinCall(): Promise<void> {
     setStatus("joining");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {
+      setStatus("mic-error");
+      return;
+    }
     localStreamRef.current = stream;
 
     const pc = createPeerConnection();
