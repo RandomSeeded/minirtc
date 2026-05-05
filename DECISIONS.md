@@ -4,7 +4,7 @@
 
 - WebSockets: bidirectional communication layer between backend service and frontend. Other options being http long-polling or SSE, but websockets chosen for simplicity / to unify the communication layer
 - WebRTC: p2p handling of audio/video traffic. Chosen to minimize our bandwidth (costs) and e2e user-facing latency (no hop required to our servers)
-- Redis pub/sub: enables horizontal scaling of the backend application server. Handles the issue of users not being guaranteed to be colocated on the same backend server instance: we emit an event for a given roomId, and the appropriate backend server instances are subscribed to events for that roomId.
+- Redis pub/sub: enables horizontal scaling of the backend application server. Handles the issue of users not being guaranteed to be colocated on the same backend server instance: we emit an event for a given roomId, and the appropriate backend server instances are subscribed to events for that roomId. NOTE: we could also do colocation for horizontal scaling - this would be the right approach if we wanted to support 3+ clients in a room.
 
 ## What breaks if we had 10k rooms/day?
 
