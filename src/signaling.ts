@@ -47,7 +47,11 @@ export function attachSignaling(server: Server): void {
 
   const heartbeat = setInterval(() => {
     wss.clients.forEach((ws) => {
-      if (!isAlive.get(ws)) { ws.terminate(); return; }
+      if (!isAlive.get(ws)) {
+        console.warn(`[${INSTANCE}] terminating unresponsive connection`);
+        ws.terminate();
+        return;
+      }
       isAlive.set(ws, false);
       ws.ping();
     });
@@ -66,8 +70,13 @@ export function attachSignaling(server: Server): void {
     const exists = await roomExists(roomId);
     const peerCount = await redis.scard(`room:${roomId}:peers`);
 
-    if (!exists || peerCount >= 2) {
-      console.log(`[${INSTANCE}] rejected — room not found or full`);
+    if (!exists) {
+      console.warn(`[${INSTANCE}] rejected — room not found: ${roomId}`);
+      socket.destroy();
+      return;
+    }
+    if (peerCount >= 2) {
+      console.warn(`[${INSTANCE}] rejected — room full: ${roomId}`);
       socket.destroy();
       return;
     }
@@ -88,9 +97,9 @@ async function onConnection(ws: WebSocket, roomId: string): Promise<void> {
   localPeers.get(roomId)!.set(peerId, ws);
   await redis.sadd(`room:${roomId}:peers`, peerId);
 
-  // Subscribe to room channel if this is our first local peer for this room
   if (localPeers.get(roomId)!.size === 1) {
     await redisSub.subscribe(`room:${roomId}`);
+    console.log(`[${INSTANCE}] subscribed to room:${roomId}`);
   }
 
   console.log(`[${INSTANCE}] peer ${peerId} connected to room ${roomId}`);
@@ -99,13 +108,17 @@ async function onConnection(ws: WebSocket, roomId: string): Promise<void> {
   if (totalPeers >= 2) {
     ws.send(JSON.stringify({ type: "peer-joined", initiator: false }));
     await redis.publish(`room:${roomId}`, JSON.stringify({ type: "peer-connected", from: peerId }));
+    console.log(`[${INSTANCE}] peer-joined sent to ${peerId}, peer-connected published for room ${roomId}`);
   }
 
   ws.on("message", async (data) => {
     try {
       const msg = JSON.parse(data.toString()) as Record<string, unknown>;
+      console.log(`[${INSTANCE}] relay ${msg.type} from ${peerId} in room ${roomId}`);
       await redis.publish(`room:${roomId}`, JSON.stringify({ ...msg, from: peerId }));
-    } catch { }
+    } catch (err) {
+      console.error(`[${INSTANCE}] failed to parse message from ${peerId}:`, err);
+    }
   });
 
   ws.on("close", async () => {
@@ -115,6 +128,7 @@ async function onConnection(ws: WebSocket, roomId: string): Promise<void> {
     if (localPeers.get(roomId)?.size === 0) {
       localPeers.delete(roomId);
       await redisSub.unsubscribe(`room:${roomId}`);
+      console.log(`[${INSTANCE}] unsubscribed from room:${roomId}`);
     }
 
     await redis.publish(`room:${roomId}`, JSON.stringify({ type: "peer-disconnected", from: peerId }));

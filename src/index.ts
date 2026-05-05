@@ -17,12 +17,14 @@ app.get("/health", (_req, res) => {
 
 app.post("/api/rooms", async (_req, res) => {
   const id = await createRoom();
+  console.log(`[api] room created: ${id}`);
   res.status(201).json({ id });
 });
 
 app.get("/api/rooms/:id", async (req, res) => {
   const exists = await roomExists(req.params.id ?? "");
   if (!exists) {
+    console.warn(`[api] room not found: ${req.params.id}`);
     res.status(404).json({ error: "Room not found" });
     return;
   }
