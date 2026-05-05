@@ -69,6 +69,7 @@ export function useWebRTC(
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       wsRef.current?.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
+      setStatus("connecting");
     } else if (pendingOfferRef.current) {
       await handleOffer(pendingOfferRef.current);
       pendingOfferRef.current = null;

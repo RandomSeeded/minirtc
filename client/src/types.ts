@@ -2,6 +2,7 @@ export type CallStatus =
   | "waiting"
   | "ready"
   | "joining"
+  | "connecting"
   | "waiting-for-offer"
   | "in-call"
   | "failed";

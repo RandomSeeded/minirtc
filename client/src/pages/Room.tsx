@@ -7,6 +7,7 @@ const STATUS_TEXT: Record<CallStatus, string> = {
   waiting: "Waiting for other user...",
   ready: "Peer connected — click Join Call",
   joining: "Getting microphone...",
+  connecting: "Connecting...",
   "waiting-for-offer": "Waiting for offer...",
   "in-call": "In call",
   failed: "Connection failed",
@@ -35,7 +36,7 @@ export default function Room() {
     return () => ws.close();
   }, [roomId]);
 
-  const inCall = status === "in-call" || status === "waiting-for-offer" || status === "joining";
+  const inCall = status === "in-call" || status === "waiting-for-offer" || status === "joining" || status === "connecting";
   const isActive = status === "in-call";
 
   return (

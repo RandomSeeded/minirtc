@@ -5,9 +5,10 @@ import { redis, redisSub } from "./redis";
 import { roomExists } from "./rooms";
 
 const INSTANCE = process.env.INSTANCE_ID ?? "local";
+const PING_INTERVAL_MS = 30_000;
 
-// Local WebSocket connections: roomId → Map<peerId, WebSocket>
 const localPeers = new Map<string, Map<string, WebSocket>>();
+const isAlive = new WeakMap<WebSocket, boolean>();
 
 type ChannelMessage = { type: string; from: string;[key: string]: unknown };
 
@@ -44,6 +45,16 @@ function dispatch(roomId: string, msg: ChannelMessage): void {
 export function attachSignaling(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
 
+  const heartbeat = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (!isAlive.get(ws)) { ws.terminate(); return; }
+      isAlive.set(ws, false);
+      ws.ping();
+    });
+  }, PING_INTERVAL_MS);
+
+  wss.on("close", () => clearInterval(heartbeat));
+
   server.on("upgrade", async (req, socket, head) => {
     const match = req.url?.match(/^\/rooms\/([^/]+)\/ws$/);
     if (!match) {
@@ -62,6 +73,8 @@ export function attachSignaling(server: Server): void {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      isAlive.set(ws, true);
+      ws.on("pong", () => isAlive.set(ws, true));
       onConnection(ws, roomId).catch(() => ws.close());
     });
   });
