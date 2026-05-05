@@ -13,12 +13,15 @@ const STATUS_TEXT: Record<CallStatus, string> = {
   failed: "Connection failed",
 };
 
+const IN_CALL_STATUSES: CallStatus[] = ["joining", "connecting", "waiting-for-offer", "in-call"];
+
 export default function Room() {
   const { id: roomId } = useParams<{ id: string }>();
   const [status, setStatus] = useState<CallStatus>("waiting");
   const wsRef = useRef<WebSocket | null>(null);
 
-  const { joinCall, leaveCall, toggleMute, muted, remoteAudioRef, onMessage } =
+  const { joinCall, leaveCall, toggleMute, muted, remoteAudioRef,
+          hangup, setInitiator, handleOffer, handleAnswer, handleIceCandidate } =
     useWebRTC(wsRef, setStatus);
 
   useEffect(() => {
@@ -28,7 +31,29 @@ export default function Room() {
 
     ws.addEventListener("message", async (event) => {
       const msg = JSON.parse(event.data) as SignalingMessage;
-      await onMessage(msg);
+      switch (msg.type) {
+        case "peer-joined":
+          setInitiator(msg.initiator);
+          setStatus("ready");
+          break;
+        case "peer-left":
+          hangup();
+          setStatus("waiting");
+          break;
+        case "leave":
+          hangup();
+          setStatus("ready");
+          break;
+        case "offer":
+          await handleOffer(msg.sdp);
+          break;
+        case "answer":
+          await handleAnswer(msg.sdp);
+          break;
+        case "ice-candidate":
+          await handleIceCandidate(msg.candidate);
+          break;
+      }
     });
 
     ws.addEventListener("close", () => setStatus("waiting"));
@@ -36,7 +61,7 @@ export default function Room() {
     return () => ws.close();
   }, [roomId]);
 
-  const inCall = status === "in-call" || status === "waiting-for-offer" || status === "joining" || status === "connecting";
+  const inCall = IN_CALL_STATUSES.includes(status);
   const isActive = status === "in-call";
 
   return (

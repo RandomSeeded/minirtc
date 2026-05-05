@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { CallStatus, SignalingMessage } from "../types";
+import type { CallStatus } from "../types";
 
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
@@ -39,14 +39,6 @@ export function useWebRTC(
     return pc;
   }
 
-  async function handleOffer(sdp: string): Promise<void> {
-    const pc = pcRef.current!;
-    await pc.setRemoteDescription({ type: "offer", sdp });
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    wsRef.current?.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
-  }
-
   function hangup(): void {
     pcRef.current?.close();
     pcRef.current = null;
@@ -54,6 +46,30 @@ export function useWebRTC(
     localStreamRef.current = null;
     pendingOfferRef.current = null;
     setMuted(false);
+  }
+
+  function setInitiator(initiator: boolean): void {
+    isInitiatorRef.current = initiator;
+  }
+
+  async function handleOffer(sdp: string): Promise<void> {
+    if (!pcRef.current) {
+      pendingOfferRef.current = sdp;
+      return;
+    }
+    const pc = pcRef.current;
+    await pc.setRemoteDescription({ type: "offer", sdp });
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    wsRef.current?.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+  }
+
+  async function handleAnswer(sdp: string): Promise<void> {
+    await pcRef.current?.setRemoteDescription({ type: "answer", sdp });
+  }
+
+  async function handleIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    await pcRef.current?.addIceCandidate(candidate);
   }
 
   async function joinCall(): Promise<void> {
@@ -92,30 +108,5 @@ export function useWebRTC(
     setMuted(next);
   }
 
-  async function onMessage(msg: SignalingMessage): Promise<void> {
-    if (msg.type === "peer-joined") {
-      isInitiatorRef.current = msg.initiator;
-      setStatus("ready");
-    }
-    if (msg.type === "peer-left") {
-      hangup();
-      setStatus("waiting");
-    }
-    if (msg.type === "leave") {
-      hangup();
-      setStatus("ready");
-    }
-    if (msg.type === "offer") {
-      pcRef.current ? await handleOffer(msg.sdp) : (pendingOfferRef.current = msg.sdp);
-    }
-    if (msg.type === "answer") {
-      await pcRef.current?.setRemoteDescription({ type: "answer", sdp: msg.sdp });
-      setStatus("in-call");
-    }
-    if (msg.type === "ice-candidate") {
-      await pcRef.current?.addIceCandidate(msg.candidate);
-    }
-  }
-
-  return { joinCall, leaveCall, toggleMute, muted, remoteAudioRef, onMessage };
+  return { joinCall, leaveCall, toggleMute, muted, remoteAudioRef, hangup, setInitiator, handleOffer, handleAnswer, handleIceCandidate };
 }
