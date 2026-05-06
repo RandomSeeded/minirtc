@@ -28,3 +28,7 @@ Open [http://localhost:8080](http://localhost:8080), create a room, and share th
 - **Reconnection** — if either peer disconnects mid-call, they must rejoin manually
 - **Video** — audio only
 - **Persistent rooms** — no database; room state lives in Redis with a 24-hour TTL
+
+## Deployed:
+
+[https://minirtc.natewillard.com](https://minirtc.natewillard.com)

@@ -35,7 +35,3 @@ STUN works by asking a public server "what IP and port do you see my packets com
 In practice, it's probably worth looking into whether we can simply buy TURN as a service (Twilio?) rather than build it ourselves - this is very latency-sensitive, so geographic distribution ends up being very important here.
 
 Mentioned in previous section, but again: we will want to minimize TURN server usage to only those cases where a direct p2p connection cannot be established.
-
-## Deployed:
-
-[https://minirtc.natewillard.com](https://minirtc.natewillard.com)
