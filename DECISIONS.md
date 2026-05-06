@@ -28,7 +28,11 @@ Cost considerations:
 
 ## What can we do about NAT traversal (TURN) in 'real life'?
 
-NAT traversal: unfortunately our clients may not always be able to establish a direct p2p connection with one another. In that situation we will need to forward the actual audio/video traffic between them with TURN servers. Probably worth looking into whether we can simply buy these as a service (Twilio?) rather than build these out ourselves - this is very latency-sensitive, so geographic distribution ends up being very important here.
+NAT traversal: unfortunately our clients may not always be able to establish a direct p2p connection with one another. In that situation we will need to forward the actual audio/video traffic between them with TURN servers.
+
+STUN works by asking a public server "what IP and port do you see my packets coming from?", which reveals the public-facing address your NAT assigned for that connection. Whether that address is usable by the remote peer depends on your NAT type. On most home routers (full cone or restricted cone NAT), the same external port stays open for inbound traffic once you've made an outbound connection, so the STUN-discovered address should work. For symmetric NAT routers, the router assigns a different external port for each destination. The address STUN observed is only valid for traffic from that specific STUN server, so when the remote peer tries to connect using it, the packets arrive from a different IP, hit a port the NAT has no mapping for, and will be dropped. TURN sidesteps this by having both peers connect outbound to a relay server at a known address, which forwards traffic between them with no inbound connection required on either side.
+
+In practice, it's probably worth looking into whether we can simply buy TURN as a service (Twilio?) rather than build it ourselves - this is very latency-sensitive, so geographic distribution ends up being very important here.
 
 Mentioned in previous section, but again: we will want to minimize TURN server usage to only those cases where a direct p2p connection cannot be established.
 
